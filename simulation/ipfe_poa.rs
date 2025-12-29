@@ -26,11 +26,12 @@ enum ObfuscationStrategy {
     Transparent,  // Everyone knows exact threshold
     NoiseBased,   // Threshold + random noise
     IPFE,         // Hidden weights, only score visible
+    FairRAI,      // IPFE + commit-reveal + random selection + profit sharing
 }
 
 impl ObfuscationStrategy {
     fn all() -> Vec<Self> {
-        vec![Self::Transparent, Self::NoiseBased, Self::IPFE]
+        vec![Self::Transparent, Self::NoiseBased, Self::IPFE, Self::FairRAI]
     }
 
     fn name(&self) -> &'static str {
@@ -38,6 +39,7 @@ impl ObfuscationStrategy {
             Self::Transparent => "Transparent",
             Self::NoiseBased => "Noise-Based",
             Self::IPFE => "IPFE",
+            Self::FairRAI => "FairRAI (IPFE+Fair)",
         }
     }
 }
@@ -183,6 +185,17 @@ impl LiquidationGame {
                 let confidence = 0.2 + rng.gen::<f64>() * 0.4; // 0.2-0.6
                 (perceived_liquidatable, confidence)
             }
+            
+            ObfuscationStrategy::FairRAI => {
+                // Same as IPFE for perception, but execution is different
+                let ratio = cdp.collateral_ratio(self.eth_price);
+                let perceived_liquidatable = ratio < 1.6;
+                
+                // Confidence doesn't matter - winner is random!
+                // All keepers have equal chance regardless of gas priority
+                let confidence = rng.gen::<f64>(); // Uniform random
+                (perceived_liquidatable, confidence)
+            }
         }
     }
 
@@ -235,14 +248,37 @@ fn simulate_game(strategy: ObfuscationStrategy, rng: &mut impl Rng) -> GameResul
             continue;
         }
 
-        // Highest priority keeper wins
+        // Highest priority keeper wins (except FairRAI uses random)
         attempts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        let (winner_id, _, _) = attempts[0];
+        
+        // For FairRAI: random winner, not highest priority
+        let winner_idx = if strategy == ObfuscationStrategy::FairRAI {
+            rng.gen_range(0..attempts.len())
+        } else {
+            0 // Highest priority
+        };
+        let (winner_id, _, _) = attempts[winner_idx];
 
         // Check if liquidation actually succeeds
         if game.is_truly_liquidatable(cdp) {
             let profit = cdp.liquidation_profit(game.eth_price);
-            keepers[winner_id].total_profit += profit;
+            
+            // FairRAI: profit sharing (60% winner, 40% split)
+            if strategy == ObfuscationStrategy::FairRAI && attempts.len() > 1 {
+                let winner_share = profit * 0.6;
+                let pool_share = profit * 0.4;
+                let per_other = pool_share / (attempts.len() - 1) as f64;
+                
+                keepers[winner_id].total_profit += winner_share;
+                for (i, (kid, _, _)) in attempts.iter().enumerate() {
+                    if i != winner_idx {
+                        keepers[*kid].total_profit += per_other;
+                    }
+                }
+            } else {
+                keepers[winner_id].total_profit += profit;
+            }
+            
             keepers[winner_id].successful_liquidations += 1;
             total_profit_extracted += profit;
             successful_liquidations += 1;
