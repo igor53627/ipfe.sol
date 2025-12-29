@@ -109,6 +109,7 @@ uint256 result = mife.decryptMulti(ctPrices, ctWeights, skY1, skY2, y1, y2);
 
 - [circuit-mixing-research](https://github.com/igor53627/circuit-mixing-research) - Hybrid obfuscation research
 - [iO-papers](https://github.com/igor53627/iO-papers) - 500+ iO research papers indexed
+- [Cosmian DMCFE](https://github.com/Cosmian/dmcfe) - Rust reference implementation
 
 ## References
 

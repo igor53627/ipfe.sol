@@ -5,23 +5,18 @@ import {IPFE} from "./IPFE.sol";
 
 /// @title IPFELiquidationEngine - Hidden Liquidation Thresholds using IPFE
 /// @notice Uses inner product FE to hide the weight vector for liquidation scoring
-/// @dev Much simpler and cheaper than TLO-LWE (640 gates): uses ~5 inner products
+/// @dev Uses ~5 inner products for scoring, ~215K gas total
 ///
 /// SECURITY MODEL:
 /// - DDH assumption on bn256 (~100-bit security)
-/// - Weight vector w stays hidden forever (not just "hard to compute")
+/// - Weight vector w stays hidden forever
 /// - Only the inner product <features, weights> is revealed
-/// - Different from TLO: no topology mixing, but provable security
 ///
 /// DESIGN:
 /// - Features: [collateralRatio, volatility, utilization, age, size]
 /// - Weights: [w1, w2, w3, w4, w5] - hidden scoring function
 /// - Score = <features, weights>
-/// - If score > threshold → liquidation allowed
-///
-/// GAS COMPARISON (n=5):
-/// - TLO-LWE: ~640 gate evaluations × ~500 gas = 320K gas
-/// - IPFE: ~100K encrypt + ~50K decrypt = 150K gas (2x cheaper)
+/// - If score < threshold → liquidation allowed
 contract IPFELiquidationEngine {
     IPFE public immutable ipfe;
     
